@@ -81,6 +81,12 @@ open class CKAttachmentStrip: UIScrollView {
     return view.convert(view.bounds, to: self)
   }
 
+  public func thumbnailView(id: String) -> UIView? {
+    guard rendered.contains(where: { $0.id == id && $0.thumbnail != nil }),
+          let button = pills[id]?.contentView.subviews.first as? UIButton else { return nil }
+    return button.imageView
+  }
+
   public func snapshot(id: String) -> UIView? {
     guard rendered.contains(where: { $0.id == id }), let pill = pills[id] else { return nil }
     return pill.snapshotView(afterScreenUpdates: false)
