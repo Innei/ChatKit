@@ -3,16 +3,21 @@ import UIKit
 /// Keep the glass mounted until its material has left, and reverse the same
 /// animator when visibility changes mid-flight instead of starting another one.
 open class CKGlassSurface: UIVisualEffectView {
-  private let glass: UIGlassEffect
+  private let glass: UIGlassEffect?
   private var motion: UIViewPropertyAnimator?
   private var destination = false
   public private(set) var materialVisible = false
   public var isTransitioning: Bool { motion != nil }
   public var onHidden: (() -> Void)?
 
-  public init(interactive: Bool = false) {
-    glass = UIGlassEffect(style: .regular)
-    glass.isInteractive = interactive
+  public init(interactive: Bool = false, material: Bool = true) {
+    if material {
+      let glass = UIGlassEffect(style: .regular)
+      glass.isInteractive = interactive
+      self.glass = glass
+    } else {
+      glass = nil
+    }
     super.init(effect: nil)
     isHidden = true
     isUserInteractionEnabled = false

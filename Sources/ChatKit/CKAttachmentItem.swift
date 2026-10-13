@@ -6,15 +6,17 @@ public struct CKAttachmentItem: Equatable {
   public var name: String
   public var symbol: String
   public var thumbnail: UIImage?
+  public var detail: String?
   public var previewAccessibilityLabel: String
   public var removeAccessibilityLabel: String
 
-  public init(id: String, name: String, symbol: String = "doc", thumbnail: UIImage? = nil,
+  public init(id: String, name: String, symbol: String = "doc", thumbnail: UIImage? = nil, detail: String? = nil,
               previewAccessibilityLabel: String? = nil, removeAccessibilityLabel: String? = nil) {
     self.id = id
     self.name = name
     self.symbol = symbol
     self.thumbnail = thumbnail
+    self.detail = detail
     self.previewAccessibilityLabel = previewAccessibilityLabel ?? "Preview \(name)"
     self.removeAccessibilityLabel = removeAccessibilityLabel ?? "Remove \(name)"
   }

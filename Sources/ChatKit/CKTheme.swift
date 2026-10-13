@@ -21,5 +21,7 @@ public struct CKAttachmentStyle {
   public var height: CGFloat = 34
   public var cornerRadius: CGFloat? = nil
   public var removeSymbol: String = "xmark.circle.fill"
+  public var tiles = false
+  public var tileSide: CGFloat = 48
   public init(theme: CKTheme = .system) { self.theme = theme }
 }
