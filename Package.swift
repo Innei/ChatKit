@@ -3,8 +3,11 @@ import PackageDescription
 
 let package = Package(
   name: "ChatKit",
-  platforms: [.iOS("26.0")],
-  products: [.library(name: "ChatKit", targets: ["ChatKit"])],
+  platforms: [.iOS("26.0"), .macOS("26.0")],
+  products: [
+    .library(name: "ChatKit", targets: ["ChatKit"]),
+    .library(name: "ChatKitCore", targets: ["ChatKitCore"]),
+  ],
   targets: [
     .target(name: "ChatKitCore"),
     .target(name: "ChatKit", dependencies: ["ChatKitCore"]),
