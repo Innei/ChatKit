@@ -38,7 +38,7 @@ public enum CKTextShine {
       CGColor(gray: 0, alpha: 1),
       CGColor(gray: 0, alpha: 1),
     ] as CFArray
-    let locations: [CGFloat] = [0, 0.25, 0.5, 0.75, 1]
+    let locations: [CGFloat] = [0, 0.4, 0.5, 0.6, 1]
     guard let gradient = CGGradient(colorsSpace: gray, colors: colors, locations: locations) else { return nil }
     let angle = 120 * CGFloat.pi / 180
     let direction = CGPoint(x: sin(angle), y: -cos(angle))
@@ -54,6 +54,20 @@ public enum CKTextShine {
     )
     bitmap.restoreGState()
     return bitmap.makeImage()
+  }
+
+  /// Draws glyphs again in `color` inside the band, so the sweep lifts text
+  /// toward that color instead of fading it; `draw` renders the glyphs only.
+  public static func highlight(in context: CGContext, bounds: CGRect, mask: CGImage, color: CGColor, draw: () -> Void) {
+    context.saveGState()
+    context.clip(to: bounds, mask: mask)
+    context.beginTransparencyLayer(auxiliaryInfo: nil)
+    draw()
+    context.setBlendMode(.sourceIn)
+    context.setFillColor(color)
+    context.fill(bounds)
+    context.endTransparencyLayer()
+    context.restoreGState()
   }
 }
 
@@ -171,6 +185,7 @@ public final class CKTextView: UIView {
   }
 
   private var shining: Bool { shineEnabled && !UIAccessibility.isReduceMotionEnabled }
+  public var shineColor: UIColor = .label
 
   private func pokeDisplayTimer() {
     let keep = window != nil && !UIAccessibility.isReduceMotionEnabled
@@ -213,13 +228,10 @@ public final class CKTextView: UIView {
       scale: max(1, traitCollection.displayScale),
       overlay: overlay
     ) else { return }
-    context.saveGState()
-    context.clip(to: bounds, mask: mask)
-    context.setBlendMode(.copy)
-    context.setAlpha(0.32)
-    manager.drawBackground(forGlyphRange: range, at: .zero)
-    manager.drawGlyphs(forGlyphRange: range, at: .zero)
-    context.restoreGState()
+    let color = shineColor.resolvedColor(with: traitCollection).cgColor
+    CKTextShine.highlight(in: context, bounds: bounds, mask: mask, color: color) {
+      manager.drawGlyphs(forGlyphRange: range, at: .zero)
+    }
   }
 
   public override func draw(_ rect: CGRect) {
