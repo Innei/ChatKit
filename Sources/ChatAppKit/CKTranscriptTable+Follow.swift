@@ -101,7 +101,7 @@ extension CKTranscriptTable {
     let hadSpacer = reserve > 0
     reserve = next > 0.5 ? next : 0
     if hadSpacer == (reserve > 0), let index = displayedRows.firstIndex(where: { $0.kind == Self.reserveKind }) {
-      tableView.noteHeightOfRows(withIndexesChanged: [index])
+      noteHeights([index])
     } else {
       display(windowed())
     }
@@ -116,7 +116,7 @@ extension CKTranscriptTable {
     motion = CKTranscriptMotion(timer: timer, from: scrollView.contentView.bounds.minY, began: now, last: now)
   }
 
-  private func stopMotion() {
+  func stopMotion() {
     motion?.timer.invalidate()
     motion = nil
   }

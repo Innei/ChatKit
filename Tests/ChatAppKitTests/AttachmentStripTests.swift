@@ -50,4 +50,18 @@ private func strip(_ attachments: [CKAttachment], editable: Bool = false) -> CKA
   #expect(rows.count > 1)
   #expect(view.fittingSize.height >= view.pills.map(\.frame.maxY).max()!)
 }
+
+@MainActor
+func click(_ view: NSView, count: Int) -> NSEvent {
+  NSEvent.mouseEvent(with: .leftMouseUp, location: view.convert(NSPoint(x: 10, y: 10), to: nil), modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: count, pressure: 0)!
+}
+
+@MainActor @Test func aDoubleClickPreviewsOnce() {
+  var previewed = 0
+  let view = strip([CKAttachment(id: "a", name: "report.pdf")])
+  view.onPreview = { _ in previewed += 1 }
+  view.pills[0].mouseUp(with: click(view.pills[0], count: 1))
+  view.pills[0].mouseUp(with: click(view.pills[0], count: 2))
+  #expect(previewed == 1)
+}
 #endif

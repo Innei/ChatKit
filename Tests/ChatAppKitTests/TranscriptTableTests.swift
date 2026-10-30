@@ -196,4 +196,23 @@ private func bottomY(_ table: CKTranscriptTable) -> CGFloat {
   let last = table.displayedRows.count - 1
   #expect((table.contentView(at: last) as? NSTextField)?.stringValue == "r59 v2")
 }
+
+@MainActor @Test func aDuplicateRowDropsOnlyTheRepeatNotTheWholeUpdate() {
+  let (table, window) = table(rows: 2)
+  defer { window.close() }
+  let row = { (id: String) in CKTranscriptRow(id: id, kind: "text", neighbourKey: "text", version: 1, group: "e-\(id)") }
+  table.apply([row("r0"), row("r1"), row("r0"), row("r2")])
+  #expect(table.rows.map(\.id) == ["r0", "r1", "r2"])
+}
+
+@MainActor @Test func motionStopsWhenTheTableLeavesItsWindow() {
+  let (table, window) = table(rows: 3)
+  defer { window.close() }
+  table.follow(.send(queued: false))
+  table.apply(table.rows + [CKTranscriptRow(id: "sent", kind: "user", neighbourKey: "user", version: 1, group: "e-sent")])
+  table.anchor(rowID: "sent")
+  #expect(table.isMoving)
+  window.contentView = NSView()
+  #expect(!table.isMoving)
+}
 #endif

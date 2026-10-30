@@ -164,7 +164,7 @@ public final class CKAttachmentPill: NSView {
   public override func mouseDown(with event: NSEvent) {}
 
   public override func mouseUp(with event: NSEvent) {
-    guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
+    guard event.clickCount <= 1, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
     onPress(attachment)
   }
 

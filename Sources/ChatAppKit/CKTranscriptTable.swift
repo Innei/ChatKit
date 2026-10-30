@@ -84,6 +84,10 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
 
   public required init?(coder: NSCoder) { nil }
 
+  isolated deinit {
+    motion?.timer.invalidate()
+  }
+
   public var contentWidth: CGFloat {
     max(1, min(readingWidth ?? .greatestFiniteMagnitude, bounds.width) - horizontalInset * 2)
   }
@@ -101,7 +105,8 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
       pending = next
       return
     }
-    guard Set(next.map(\.id)).count == next.count else { return }
+    var seen = Set<String>()
+    let next = next.filter { seen.insert($0.id).inserted }
     rows = next
     previousKeys = Dictionary(uniqueKeysWithValues: zip(next.map(\.id), [""] + next.map(\.neighbourKey)))
     heights.prune(retaining: Set(next.map(\.id)))
@@ -142,13 +147,26 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
       guard let container = tableView.view(atColumn: 0, row: index, makeIfNecessary: false) as? CKTranscriptCellView else { continue }
       container.install(content(for: next[index], reusing: container.content))
     }
-    if !changed.isEmpty { tableView.noteHeightOfRows(withIndexesChanged: changed) }
+    if !changed.isEmpty { noteHeights(changed) }
   }
 
   public func reloadAll() {
     heights.invalidateAll()
     measurers.removeAll()
     tableView.reloadData()
+  }
+
+  public override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if window == nil { stopMotion() }
+  }
+
+  // View-based tables animate height changes unless the change runs in a zero-duration group.
+  func noteHeights(_ rows: IndexSet) {
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0
+      tableView.noteHeightOfRows(withIndexesChanged: rows)
+    }
   }
 
   public override func layout() {
@@ -221,7 +239,7 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
     history.widthChanged(contentWidth)
     if preparing != nil { prepareEarlier() }
     guard !displayedRows.isEmpty else { return }
-    tableView.noteHeightOfRows(withIndexesChanged: IndexSet(displayedRows.indices))
+    noteHeights(IndexSet(displayedRows.indices))
     for index in 0..<tableView.numberOfRows {
       tableView.view(atColumn: 0, row: index, makeIfNecessary: false)?.needsLayout = true
     }
