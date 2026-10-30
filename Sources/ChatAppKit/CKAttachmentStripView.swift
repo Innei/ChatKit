@@ -134,7 +134,7 @@ public final class CKAttachmentPill: NSView {
   }
 
   func preferredSize(maxWidth: CGFloat) -> NSSize {
-    let text = max(name.intrinsicContentSize.width, detail.intrinsicContentSize.width)
+    let text = max(name.attributedStringValue.size().width, detail.attributedStringValue.size().width) + 8
     let chrome: CGFloat = 8 + 28 + 8 + 10 + (removeButton == nil ? 0 : 20)
     return NSSize(width: min(maxWidth, max(120, min(240, ceil(text) + chrome))), height: Self.height)
   }
@@ -198,6 +198,8 @@ public final class CKAttachmentPill: NSView {
     }
     let button = removeButton ?? NSButton(image: NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: label) ?? NSImage(), target: self, action: #selector(remove))
     button.isBordered = false
+    button.title = ""
+    button.imagePosition = .imageOnly
     button.contentTintColor = .tertiaryLabelColor
     button.setAccessibilityLabel(label)
     if button.superview == nil { addSubview(button) }

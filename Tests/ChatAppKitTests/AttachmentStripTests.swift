@@ -38,6 +38,8 @@ private func strip(_ attachments: [CKAttachment], editable: Bool = false) -> CKA
   var removed: [String] = []
   let view = strip([CKAttachment(id: "a", name: "report.pdf")], editable: true)
   view.onRemove = { removed.append($0.id) }
+  #expect(view.pills[0].removeButton?.title == "")
+  #expect(view.pills[0].removeButton?.accessibilityLabel() == "Remove")
   view.pills[0].removeButton?.performClick(nil)
   #expect(removed == ["a"])
 }
