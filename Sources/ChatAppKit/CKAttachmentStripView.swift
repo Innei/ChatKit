@@ -155,6 +155,14 @@ public final class CKAttachmentPill: NSView {
     layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
   }
 
+  public override func hitTest(_ point: NSPoint) -> NSView? {
+    guard let hit = super.hitTest(point) else { return nil }
+    if let removeButton, hit.isDescendant(of: removeButton) { return hit }
+    return self
+  }
+
+  public override func mouseDown(with event: NSEvent) {}
+
   public override func mouseUp(with event: NSEvent) {
     guard bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
     onPress(attachment)
