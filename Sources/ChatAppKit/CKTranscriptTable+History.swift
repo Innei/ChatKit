@@ -53,7 +53,13 @@ extension CKTranscriptTable {
     let groups = groupOrder
     let boundary = history.update(groups: groups)
     let start = groups.isEmpty ? 0 : rows.firstIndex { $0.group == groups[boundary] } ?? 0
-    let visible = Array(rows[start...])
+    let shown = Dictionary(displayedRows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    var visible = rows[start...].map { row in
+      deferral.deferred.contains(row.group) ? shown[row.id] ?? row : row
+    }
+    if reserve > 0 {
+      visible.append(CKTranscriptRow(id: Self.reserveKind, kind: Self.reserveKind, neighbourKey: "", version: 0, group: Self.reserveKind))
+    }
     guard history.hasEarlier || history.hasPaged else { return visible }
     refreshHeader()
     return [CKTranscriptRow(id: Self.historyKind, kind: Self.historyKind, neighbourKey: "", version: headerState.rawValue, group: "")] + visible
@@ -65,16 +71,32 @@ extension CKTranscriptTable {
     center.addObserver(self, selector: #selector(liveScrollEnded), name: NSScrollView.didEndLiveScrollNotification, object: scrollView)
     scrollView.contentView.postsBoundsChangedNotifications = true
     center.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+    scrollView.contentView.postsFrameChangedNotifications = true
+    tableView.postsFrameChangedNotifications = true
+    center.addObserver(self, selector: #selector(resized), name: NSView.frameDidChangeNotification, object: scrollView.contentView)
+    center.addObserver(self, selector: #selector(grew), name: NSView.frameDidChangeNotification, object: tableView)
   }
 
-  @objc private func liveScrollStarted() { liveScrolling = true }
+  @objc private func liveScrollStarted() {
+    liveScrolling = true
+    follow(.pause)
+  }
 
   @objc private func liveScrollEnded() {
     liveScrolling = false
+    follow(.scrollEnded(distanceFromBottom: distanceFromBottom))
     commitEarlier()
   }
 
-  @objc private func scrolled() { prefetchIfNeeded() }
+  @objc private func scrolled() {
+    prefetchIfNeeded()
+    catchUpDeferred()
+    if motion == nil, !liveScrolling { settle(snap: true) }
+  }
+
+  @objc private func resized() { settle(snap: true) }
+
+  @objc private func grew() { settle() }
 
   func prefetchIfNeeded() {
     let clip = scrollView.contentView.bounds

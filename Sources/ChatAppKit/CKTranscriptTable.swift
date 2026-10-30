@@ -8,20 +8,23 @@ public struct CKTranscriptRow: CKDiffableRow, Sendable {
   public var neighbourKey: String
   public var version: Int
   public var group: String
+  public var deferrable: Bool
 
-  public init(id: String, kind: String, neighbourKey: String, version: Int, group: String) {
+  public init(id: String, kind: String, neighbourKey: String, version: Int, group: String, deferrable: Bool = false) {
     self.id = id
     self.kind = kind
     self.neighbourKey = neighbourKey
     self.version = version
     self.group = group
+    self.deferrable = deferrable
   }
 }
 
 @MainActor
 public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableViewDelegate {
   public static let historyKind = "ck.history"
-  public let scrollView = NSScrollView()
+  static let reserveKind = "ck.reserve"
+  public let scrollView: NSScrollView = CKScrollView()
   public let tableView = NSTableView()
   public var spacing: CGFloat = 14
   public var horizontalInset: CGFloat = 16
@@ -30,9 +33,10 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
   }
   public var cell: (CKTranscriptRow, NSView?) -> NSView = { _, reused in reused ?? NSView() }
   public var measure: ((CKTranscriptRow, CGFloat) -> CGFloat)?
-  public var following = true {
-    didSet { if !following { prefetchIfNeeded() } }
-  }
+  public internal(set) var followState = CKFollowState()
+  public internal(set) var reserve: CGFloat = 0
+  public var following: Bool { followState.follows }
+  public var isMoving: Bool { motion != nil }
   public let historyHeader = CKHistoryHeaderView()
   public private(set) var rows: [CKTranscriptRow] = []
   public private(set) var displayedRows: [CKTranscriptRow] = []
@@ -42,6 +46,11 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
   var previousKeys: [String: String] = [:]
   var preparing: (run: CKPrepareRun, rows: [String])?
   var liveScrolling = false
+  var motion: CKTranscriptMotion?
+  var landing = false
+  var positioned = false
+  var settling = false
+  var deferral = CKStreamDeferral()
   private var measurers: [String: (view: NSView, width: NSLayoutConstraint)] = [:]
   private var applying = false
   private var pending: [CKTranscriptRow]?
@@ -70,6 +79,7 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
     addSubview(scrollView)
     historyHeader.onLoad = { [weak self] in self?.loadEarlier() }
     observeScrolling()
+    (scrollView as? CKScrollView)?.onWheel = { [weak self] began in self?.wheel(began: began) }
   }
 
   public required init?(coder: NSCoder) { nil }
@@ -95,7 +105,13 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
     rows = next
     previousKeys = Dictionary(uniqueKeysWithValues: zip(next.map(\.id), [""] + next.map(\.neighbourKey)))
     heights.prune(retaining: Set(next.map(\.id)))
+    let distance = distanceFromBottom
+    let shownGroups = Set(displayedRows.map(\.group))
     display(windowed())
+    if !shownGroups.isEmpty, let tail = displayedRows.last(where: { $0.kind != Self.reserveKind }), !shownGroups.contains(tail.group) {
+      followState.handle(.liveTurnStarted(distanceFromTail: distance))
+    }
+    settle()
   }
 
   func display(_ next: [CKTranscriptRow]) {
@@ -137,14 +153,18 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
 
   public override func layout() {
     super.layout()
-    if abs(contentWidth - laidOutWidth) > 0.5 { widthChanged() }
+    if abs(contentWidth - laidOutWidth) > 0.5 {
+      widthChanged()
+      settle(snap: true)
+    }
   }
 
   public func numberOfRows(in tableView: NSTableView) -> Int { displayedRows.count }
 
   public func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
     let item = displayedRows[row]
-    guard item.kind != Self.historyKind else { return CKHistoryHeaderView.height }
+    if item.kind == Self.historyKind { return CKHistoryHeaderView.height }
+    if item.kind == Self.reserveKind { return max(reserve, 1) }
     return height(for: item) + spacing
   }
 
@@ -160,7 +180,11 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
   public func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { false }
 
   private func content(for row: CKTranscriptRow, reusing view: NSView?) -> NSView {
-    row.kind == Self.historyKind ? historyHeader : cell(row, view)
+    switch row.kind {
+    case Self.historyKind: historyHeader
+    case Self.reserveKind: view ?? NSView()
+    default: cell(row, view)
+    }
   }
 
   @discardableResult

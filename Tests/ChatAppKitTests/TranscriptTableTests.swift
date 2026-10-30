@@ -100,7 +100,7 @@ private func waitUntil(_ condition: () -> Bool) {
   table.scrollView.reflectScrolledClipView(clip)
   let anchorID = table.displayedRows[3].id
   let before = table.tableView.rect(ofRow: 3).minY - clip.bounds.minY
-  table.following = false
+  table.follow(.unfollow)
   table.loadEarlier()
   waitUntil { table.displayedRows.count == 101 }
   #expect(table.displayedRows.count == 101)
@@ -112,7 +112,7 @@ private func waitUntil(_ condition: () -> Bool) {
 @MainActor @Test func aPageWaitsWhileTheReaderIsScrolling() {
   let (table, window) = table(rows: 120)
   defer { window.close() }
-  table.following = false
+  table.follow(.unfollow)
   NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: table.scrollView)
   table.loadEarlier()
   waitUntil { table.history.isPreparing && table.measurements >= 100 }
@@ -127,5 +127,73 @@ private func waitUntil(_ condition: () -> Bool) {
   let (table, window) = table(rows: 3)
   defer { window.close() }
   #expect(table.displayedRows.map(\.id) == ["r0", "r1", "r2"])
+}
+
+@MainActor
+private func liveScroll(_ table: CKTranscriptTable, to y: CGFloat) {
+  NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: table.scrollView)
+  table.scrollView.contentView.scroll(to: NSPoint(x: 0, y: y))
+  table.scrollView.reflectScrolledClipView(table.scrollView.contentView)
+  NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: table.scrollView)
+  table.layoutSubtreeIfNeeded()
+}
+
+@MainActor
+private func bottomY(_ table: CKTranscriptTable) -> CGFloat {
+  table.tableView.frame.height - table.scrollView.contentView.bounds.height
+}
+
+@MainActor @Test func theTableOpensFollowingTheBottom() {
+  let (table, window) = table(rows: 120)
+  defer { window.close() }
+  #expect(table.following)
+  #expect(abs(table.scrollView.contentView.bounds.minY - bottomY(table)) <= 1)
+}
+
+@MainActor @Test func aSendLandsTheAnchoredRowAtTheTopOverAReserve() {
+  let (table, window) = table(rows: 3)
+  defer { window.close() }
+  table.follow(.send(queued: false))
+  table.apply(table.rows + [CKTranscriptRow(id: "sent", kind: "user", neighbourKey: "user", version: 1, group: "e-sent")])
+  table.anchor(rowID: "sent")
+  #expect(table.isMoving)
+  waitUntil { !table.isMoving }
+  let index = table.displayedRows.firstIndex { $0.id == "sent" }!
+  let clip = table.scrollView.contentView
+  #expect(abs(table.tableView.rect(ofRow: index).minY - clip.bounds.minY) <= 1)
+  #expect(table.reserve > 0)
+}
+
+@MainActor @Test func aDragPausesFollowingAndEndingAtTheBottomResumes() {
+  let (table, window) = table(rows: 120)
+  defer { window.close() }
+  liveScroll(table, to: bottomY(table))
+  #expect(table.following)
+  liveScroll(table, to: 200)
+  #expect(!table.following)
+  liveScroll(table, to: bottomY(table) - 0.5)
+  #expect(table.following)
+}
+
+@MainActor @Test func offscreenStreamingRowsWaitUntilTheyComeBackIntoView() {
+  let (table, window) = table(rows: 60)
+  defer { window.close() }
+  var rows = table.rows
+  rows[59].deferrable = true
+  table.apply(rows)
+  table.layoutSubtreeIfNeeded()
+  liveScroll(table, to: 600)
+  let clip = table.scrollView.contentView
+  let first = table.tableView.rows(in: clip.bounds).location
+  let before = table.tableView.rect(ofRow: first).minY - clip.bounds.minY
+  let measured = table.measurements
+  rows[59].version = 2
+  table.apply(rows)
+  table.layoutSubtreeIfNeeded()
+  #expect(table.measurements == measured)
+  #expect(abs(table.tableView.rect(ofRow: first).minY - clip.bounds.minY - before) <= 1)
+  liveScroll(table, to: bottomY(table))
+  let last = table.displayedRows.count - 1
+  #expect((table.contentView(at: last) as? NSTextField)?.stringValue == "r59 v2")
 }
 #endif
