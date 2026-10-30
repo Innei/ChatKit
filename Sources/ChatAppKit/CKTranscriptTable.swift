@@ -20,6 +20,7 @@ public struct CKTranscriptRow: CKDiffableRow, Sendable {
 
 @MainActor
 public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableViewDelegate {
+  public static let historyKind = "ck.history"
   public let scrollView = NSScrollView()
   public let tableView = NSTableView()
   public var spacing: CGFloat = 14
@@ -29,9 +30,18 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
   }
   public var cell: (CKTranscriptRow, NSView?) -> NSView = { _, reused in reused ?? NSView() }
   public var measure: ((CKTranscriptRow, CGFloat) -> CGFloat)?
+  public var following = true {
+    didSet { if !following { prefetchIfNeeded() } }
+  }
+  public let historyHeader = CKHistoryHeaderView()
   public private(set) var rows: [CKTranscriptRow] = []
+  public private(set) var displayedRows: [CKTranscriptRow] = []
   public private(set) var measurements = 0
-  private var heights = CKHeightCache()
+  public internal(set) var history = CKHistoryWindow()
+  var heights = CKHeightCache()
+  var previousKeys: [String: String] = [:]
+  var preparing: (run: CKPrepareRun, rows: [String])?
+  var liveScrolling = false
   private var measurers: [String: (view: NSView, width: NSLayoutConstraint)] = [:]
   private var applying = false
   private var pending: [CKTranscriptRow]?
@@ -58,6 +68,8 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
     scrollView.frame = bounds
     scrollView.autoresizingMask = [.width, .height]
     addSubview(scrollView)
+    historyHeader.onLoad = { [weak self] in self?.loadEarlier() }
+    observeScrolling()
   }
 
   public required init?(coder: NSCoder) { nil }
@@ -79,6 +91,14 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
       pending = next
       return
     }
+    guard Set(next.map(\.id)).count == next.count else { return }
+    rows = next
+    previousKeys = Dictionary(uniqueKeysWithValues: zip(next.map(\.id), [""] + next.map(\.neighbourKey)))
+    heights.prune(retaining: Set(next.map(\.id)))
+    display(windowed())
+  }
+
+  func display(_ next: [CKTranscriptRow]) {
     applying = true
     defer {
       applying = false
@@ -87,10 +107,9 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
         apply(queued)
       }
     }
-    guard case .success(let changes) = CKRowDiff.compute(previous: rows, next: next) else { return }
-    let previous = rows
-    rows = next
-    heights.prune(retaining: Set(next.map(\.id)))
+    guard case .success(let changes) = CKRowDiff.compute(previous: displayedRows, next: next) else { return }
+    let previous = displayedRows
+    displayedRows = next
     let deleted = Set(changes.deleted)
     let inserted = Set(changes.inserted)
     guard previous.map(\.id).filter({ !deleted.contains($0) }) == next.map(\.id).filter({ !inserted.contains($0) }) else {
@@ -105,7 +124,7 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
     let changed = IndexSet(changes.reconfigured.compactMap { positions[$0] })
     for index in changed {
       guard let container = tableView.view(atColumn: 0, row: index, makeIfNecessary: false) as? CKTranscriptCellView else { continue }
-      container.install(cell(next[index], container.content))
+      container.install(content(for: next[index], reusing: container.content))
     }
     if !changed.isEmpty { tableView.noteHeightOfRows(withIndexesChanged: changed) }
   }
@@ -121,27 +140,33 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
     if abs(contentWidth - laidOutWidth) > 0.5 { widthChanged() }
   }
 
-  public func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+  public func numberOfRows(in tableView: NSTableView) -> Int { displayedRows.count }
 
   public func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-    height(at: row) + spacing
+    let item = displayedRows[row]
+    guard item.kind != Self.historyKind else { return CKHistoryHeaderView.height }
+    return height(for: item) + spacing
   }
 
   public func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-    let item = rows[row]
+    let item = displayedRows[row]
     let identifier = NSUserInterfaceItemIdentifier(item.kind)
     let container = (tableView.makeView(withIdentifier: identifier, owner: nil) as? CKTranscriptCellView) ?? CKTranscriptCellView(identifier: identifier)
     container.table = self
-    container.install(cell(item, container.content))
+    container.install(content(for: item, reusing: container.content))
     return container
   }
 
   public func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { false }
 
-  private func height(at index: Int) -> CGFloat {
-    let row = rows[index]
+  private func content(for row: CKTranscriptRow, reusing view: NSView?) -> NSView {
+    row.kind == Self.historyKind ? historyHeader : cell(row, view)
+  }
+
+  @discardableResult
+  func height(for row: CKTranscriptRow) -> CGFloat {
     let width = contentWidth
-    let key = CKHeightKey(id: row.id, version: row.version, width: width, previous: index > 0 ? rows[index - 1].neighbourKey : "")
+    let key = CKHeightKey(id: row.id, version: row.version, width: width, previous: previousKeys[row.id] ?? "")
     if let cached = heights.height(for: key) { return cached }
     measurements += 1
     let measured = measure?(row, width) ?? fit(row, width: width)
@@ -169,8 +194,10 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
 
   private func widthChanged() {
     laidOutWidth = contentWidth
-    guard !rows.isEmpty else { return }
-    tableView.noteHeightOfRows(withIndexesChanged: IndexSet(rows.indices))
+    history.widthChanged(contentWidth)
+    if preparing != nil { prepareEarlier() }
+    guard !displayedRows.isEmpty else { return }
+    tableView.noteHeightOfRows(withIndexesChanged: IndexSet(displayedRows.indices))
     for index in 0..<tableView.numberOfRows {
       tableView.view(atColumn: 0, row: index, makeIfNecessary: false)?.needsLayout = true
     }

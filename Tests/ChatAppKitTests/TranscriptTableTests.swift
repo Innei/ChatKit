@@ -30,7 +30,7 @@ private func table(rows count: Int, height: CGFloat = 400) -> (CKTranscriptTable
   let (table, window) = table(rows: 1000)
   defer { window.close() }
   #expect(table.rows.count == 1000)
-  #expect(table.tableView.numberOfRows == 1000)
+  #expect(table.tableView.numberOfRows == 51)
   #expect(table.instantiatedContentViews.count < 60)
 }
 
@@ -75,5 +75,57 @@ private func table(rows count: Int, height: CGFloat = 400) -> (CKTranscriptTable
   #expect(table.contentWidth == 468)
   table.readingWidth = nil
   #expect(table.contentWidth == 668)
+}
+
+@MainActor
+private func waitUntil(_ condition: () -> Bool) {
+  let deadline = Date().addingTimeInterval(3)
+  while !condition(), Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+}
+
+@MainActor @Test func historyOpensOnTheLatestPageWithAHeader() {
+  let (table, window) = table(rows: 120)
+  defer { window.close() }
+  #expect(table.displayedRows.count == 51)
+  #expect(table.displayedRows.first?.kind == CKTranscriptTable.historyKind)
+  #expect(table.displayedRows[1].id == "r70")
+  #expect(table.history.hasEarlier)
+}
+
+@MainActor @Test func reachingTheTopLoadsTheEarlierPageAndKeepsTheReaderInPlace() {
+  let (table, window) = table(rows: 120)
+  defer { window.close() }
+  let clip = table.scrollView.contentView
+  clip.scroll(to: NSPoint(x: 0, y: table.tableView.rect(ofRow: 3).minY))
+  table.scrollView.reflectScrolledClipView(clip)
+  let anchorID = table.displayedRows[3].id
+  let before = table.tableView.rect(ofRow: 3).minY - clip.bounds.minY
+  table.following = false
+  table.loadEarlier()
+  waitUntil { table.displayedRows.count == 101 }
+  #expect(table.displayedRows.count == 101)
+  let index = table.displayedRows.firstIndex { $0.id == anchorID }!
+  let after = table.tableView.rect(ofRow: index).minY - clip.bounds.minY
+  #expect(abs(after - before) <= 1)
+}
+
+@MainActor @Test func aPageWaitsWhileTheReaderIsScrolling() {
+  let (table, window) = table(rows: 120)
+  defer { window.close() }
+  table.following = false
+  NotificationCenter.default.post(name: NSScrollView.willStartLiveScrollNotification, object: table.scrollView)
+  table.loadEarlier()
+  waitUntil { table.history.isPreparing && table.measurements >= 100 }
+  RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+  #expect(table.displayedRows.count == 51)
+  NotificationCenter.default.post(name: NSScrollView.didEndLiveScrollNotification, object: table.scrollView)
+  waitUntil { table.displayedRows.count == 101 }
+  #expect(table.displayedRows.count == 101)
+}
+
+@MainActor @Test func shortTranscriptsHaveNoHeader() {
+  let (table, window) = table(rows: 3)
+  defer { window.close() }
+  #expect(table.displayedRows.map(\.id) == ["r0", "r1", "r2"])
 }
 #endif
