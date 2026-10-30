@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import UIKit
 
 /// Display-only attachment. The host resolves thumbnails, localization and file access.
@@ -21,3 +22,4 @@ public struct CKAttachmentItem: Equatable {
     self.removeAccessibilityLabel = removeAccessibilityLabel ?? "Remove \(name)"
   }
 }
+#endif

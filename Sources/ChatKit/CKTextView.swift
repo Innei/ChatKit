@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import ChatKitCore
 import UIKit
 
@@ -275,3 +276,4 @@ public final class CKTextView: UIView {
     drawRange(NSRange(location: cursor, length: max(0, NSMaxRange(visible) - cursor)), opacity: 1)
   }
 }
+#endif

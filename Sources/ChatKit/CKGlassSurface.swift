@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import UIKit
 
 /// Keep the glass mounted until its material has left, and reverse the same
@@ -83,3 +84,4 @@ open class CKGlassSurface: UIVisualEffectView {
     if window == nil { setVisible(materialVisible, animated: false) }
   }
 }
+#endif

@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import UIKit
 
 open class CKAttachmentStrip: UIScrollView {
@@ -221,3 +222,4 @@ open class CKAttachmentStrip: UIScrollView {
      view.leadingAnchor.constraint(equalTo: host.leadingAnchor), view.trailingAnchor.constraint(equalTo: host.trailingAnchor)]
   }
 }
+#endif

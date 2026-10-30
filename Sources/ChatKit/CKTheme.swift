@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import UIKit
 
 /// Per-instance semantic colors. Dynamic UIColors remain unresolved until UIKit draws them.
@@ -25,3 +26,4 @@ public struct CKAttachmentStyle {
   public var tileSide: CGFloat = 48
   public init(theme: CKTheme = .system) { self.theme = theme }
 }
+#endif
