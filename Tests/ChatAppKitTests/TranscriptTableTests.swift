@@ -74,7 +74,20 @@ private func table(rows count: Int, height: CGFloat = 400) -> (CKTranscriptTable
   table.readingWidth = 500
   #expect(table.contentWidth == 468)
   table.readingWidth = nil
-  #expect(table.contentWidth == 668)
+  #expect(table.contentWidth == table.scrollView.contentView.bounds.width - 32)
+}
+
+@MainActor @Test func bothGuttersSurviveASpaceTakingScrollbar() throws {
+  let (table, window) = table(rows: 3)
+  defer { window.close() }
+  table.scrollView.scrollerStyle = .legacy
+  table.scrollView.tile()
+  table.layoutSubtreeIfNeeded()
+  let row = try #require(table.instantiatedContentViews.first)
+  let viewport = table.scrollView.contentView
+  let frame = row.convert(row.bounds, to: viewport)
+  #expect(abs(frame.minX - viewport.bounds.minX - table.horizontalInset) <= 1)
+  #expect(abs(viewport.bounds.maxX - frame.maxX - table.horizontalInset) <= 1)
 }
 
 @MainActor

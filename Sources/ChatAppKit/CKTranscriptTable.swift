@@ -89,7 +89,7 @@ public final class CKTranscriptTable: NSView, NSTableViewDataSource, NSTableView
   }
 
   public var contentWidth: CGFloat {
-    max(1, min(readingWidth ?? .greatestFiniteMagnitude, bounds.width) - horizontalInset * 2)
+    max(1, min(readingWidth ?? .greatestFiniteMagnitude, scrollView.contentView.bounds.width) - horizontalInset * 2)
   }
 
   public var instantiatedContentViews: [NSView] {
